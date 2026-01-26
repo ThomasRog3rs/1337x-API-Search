@@ -8,6 +8,49 @@
 
 This project is intended for educational purposes only. The developer of this project is not responsible for any piracy or illegal activities that may result from the use of this API. Please use this tool responsibly and in compliance with all relevant laws and regulations.
 
+## Anti-Detection Features
+
+This API includes several anti-detection measures to avoid 403 Forbidden errors:
+
+- **Realistic Browser Headers**: Mimics real browser requests with proper Accept, Accept-Language, and other headers
+- **Referer Headers**: Uses proper referer headers to simulate navigation flow
+- **Request Delays**: Random delays between requests to mimic human behavior
+- **Retry Logic**: Automatic retries with exponential backoff on failures
+- **Proxy Support**: Optional proxy configuration via environment variables
+
+## Proxy Configuration
+
+If you're experiencing 403 Forbidden errors, you can configure a proxy to route requests through a different IP address. The API supports proxy configuration via environment variables.
+
+### Setting up a Proxy
+
+1. **Using Environment Variables** (recommended for Docker):
+   ```bash
+   export HTTP_PROXY=http://proxy.example.com:8080
+   export HTTPS_PROXY=http://proxy.example.com:8080
+   # Or use a single PROXY variable
+   export PROXY=http://proxy.example.com:8080
+   ```
+
+2. **For Docker**:
+   ```bash
+   docker run -e HTTP_PROXY=http://proxy.example.com:8080 -e HTTPS_PROXY=http://proxy.example.com:8080 your-image
+   ```
+
+3. **Proxy with Authentication**:
+   ```bash
+   export HTTP_PROXY=http://username:password@proxy.example.com:8080
+   ```
+
+### Proxy Service Recommendations
+
+Some popular proxy services that work well for web scraping:
+- **Residential Proxies**: Bright Data, Smartproxy, Oxylabs (rotating residential IPs)
+- **Datacenter Proxies**: ProxyMesh, ProxyRack (faster, cheaper, but more detectable)
+- **Free Proxies**: Generally not recommended for production use due to reliability issues
+
+**Note**: Always ensure you comply with the terms of service of both the proxy provider and the target website.
+
 ## Usage
 
 You can use this API in the following ways:
