@@ -9,14 +9,16 @@ import urllib.parse
 
 # HARDCODED CONFIGURATION
 SCRAPERAPI_KEY = ""  # Replace with your actual key
-TARGET_URL = "https://1337x.to/"
+TARGET_URL = "https://thepiratebay.org/search.php?q=Guns&audio=on&search=Pirate+Search&page=0&orderby="
 USE_PREMIUM = False  # Change to False to test without premium
 USE_ULTRA_PREMIUM = False  # Change to True if premium doesn't work
 REQUEST_TIMEOUT = 6000
+RENDER = True
 
 def build_scraperapi_url(target_url):
     """Build ScraperAPI URL with configured options."""
     params = {
+        'render': RENDER,
         'api_key': SCRAPERAPI_KEY,
         'url': target_url,
     }
@@ -83,4 +85,4 @@ def test_search(query="test", page=1):
 if __name__ == "__main__":
     test_site()
     print("\n" + "="*50 + "\n")
-    test_search()
+
