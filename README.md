@@ -12,19 +12,58 @@ This project is intended for educational purposes only. The developer of this pr
 
 This API includes several anti-detection measures to avoid 403 Forbidden errors:
 
+- **ScraperAPI Integration**: Managed Cloudflare bypass with automatic proxy rotation (recommended)
 - **Realistic Browser Headers**: Mimics real browser requests with proper Accept, Accept-Language, and other headers
 - **Referer Headers**: Uses proper referer headers to simulate navigation flow
 - **Request Delays**: Random delays between requests to mimic human behavior
-- **Retry Logic**: Automatic retries with exponential backoff on failures
+- **Retry Logic**: Automatic retries with exponential backoff on 403/429/5xx errors
 - **Proxy Support**: Optional proxy configuration via environment variables
 
-## Proxy Configuration
+## ScraperAPI Configuration (Recommended)
 
-If you're experiencing 403 Forbidden errors, you can configure a proxy to route requests through a different IP address. The API supports proxy configuration via environment variables.
+ScraperAPI handles Cloudflare challenges and provides automatic proxy rotation, making it the most reliable option for consistent scraping.
+
+### Setup Steps
+
+1. **Create an account** at [ScraperAPI](https://www.scraperapi.com/) and get your API key
+2. **Set the environment variable**:
+   ```bash
+   export SCRAPERAPI_KEY=your_api_key_here
+   ```
+
+3. **For Docker**:
+   ```bash
+   docker run -e SCRAPERAPI_KEY=your_api_key_here -p 8000:8000 1337x-api
+   ```
+
+### Optional ScraperAPI Settings
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SCRAPERAPI_KEY` | Your ScraperAPI key (required for ScraperAPI) | - |
+| `SCRAPERAPI_GEO` | Country code for geo-targeting (e.g., `us`, `uk`) | Auto |
+| `SCRAPERAPI_RENDER` | Enable JavaScript rendering (`true`/`false`) | `false` |
+| `REQUEST_TIMEOUT` | Request timeout in seconds | `60` |
+| `MAX_RETRIES` | Maximum retry attempts | `3` |
+
+### Example with All Options
+
+```bash
+docker run \
+  -e SCRAPERAPI_KEY=your_key \
+  -e SCRAPERAPI_GEO=us \
+  -e REQUEST_TIMEOUT=90 \
+  -p 8000:8000 \
+  1337x-api
+```
+
+## Alternative: Direct Proxy Configuration
+
+If you prefer to use your own proxy instead of ScraperAPI, you can configure it via environment variables. Note: this may not bypass Cloudflare challenges.
 
 ### Setting up a Proxy
 
-1. **Using Environment Variables** (recommended for Docker):
+1. **Using Environment Variables**:
    ```bash
    export HTTP_PROXY=http://proxy.example.com:8080
    export HTTPS_PROXY=http://proxy.example.com:8080
@@ -34,7 +73,7 @@ If you're experiencing 403 Forbidden errors, you can configure a proxy to route 
 
 2. **For Docker**:
    ```bash
-   docker run -e HTTP_PROXY=http://proxy.example.com:8080 -e HTTPS_PROXY=http://proxy.example.com:8080 your-image
+   docker run -e HTTP_PROXY=http://proxy.example.com:8080 -e HTTPS_PROXY=http://proxy.example.com:8080 -p 8000:8000 1337x-api
    ```
 
 3. **Proxy with Authentication**:
@@ -44,10 +83,8 @@ If you're experiencing 403 Forbidden errors, you can configure a proxy to route 
 
 ### Proxy Service Recommendations
 
-Some popular proxy services that work well for web scraping:
 - **Residential Proxies**: Bright Data, Smartproxy, Oxylabs (rotating residential IPs)
 - **Datacenter Proxies**: ProxyMesh, ProxyRack (faster, cheaper, but more detectable)
-- **Free Proxies**: Generally not recommended for production use due to reliability issues
 
 **Note**: Always ensure you comply with the terms of service of both the proxy provider and the target website.
 
@@ -132,3 +169,47 @@ The API returns a JSON response with the following structure:
  }
 ]
 ```
+
+## Testing Checklist
+
+Use this checklist to verify the scraper is working correctly:
+
+### 1. Verify ScraperAPI Configuration
+```bash
+# Check that the API key is set
+echo $SCRAPERAPI_KEY
+```
+
+### 2. Build and Run with ScraperAPI
+```bash
+# Build the Docker image
+docker build -t 1337x-api .
+
+# Run with ScraperAPI key
+docker run -e SCRAPERAPI_KEY=your_key -p 8000:8000 1337x-api
+```
+
+### 3. Test a Search Request
+```bash
+# Make a test request (should return JSON with torrent data)
+curl http://localhost:8000/test
+
+# Check the Docker logs for:
+# - "ScraperAPI transport enabled" on startup
+# - "ScraperAPI session ready" on first request
+# - No 403 errors
+```
+
+### 4. Verify Server IP is Hidden
+- Your server's IP should not appear in requests to the target site
+- All requests go through ScraperAPI's proxy network
+- Check your ScraperAPI dashboard for request logs
+
+### 5. Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Still getting 403 | Verify API key is correct, try enabling `SCRAPERAPI_RENDER=true` |
+| Slow responses | ScraperAPI adds latency; this is normal |
+| Empty results | Check if the search term exists on the site |
+| Timeout errors | Increase `REQUEST_TIMEOUT` value |

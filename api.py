@@ -2,33 +2,75 @@ import html
 import os
 import time
 import random
+import urllib.parse
+import requests
+from bs4 import BeautifulSoup
+
+# Try to import cloudscraper as fallback (used when ScraperAPI is not configured)
 try:
     import cloudscraper
     CLOUDSCRAPER_AVAILABLE = True
 except ImportError:
-    import requests
     CLOUDSCRAPER_AVAILABLE = False
-    print("Warning: cloudscraper not installed. Install it with: pip install cloudscraper")
-from bs4 import BeautifulSoup
 
 baseURL = "https://www.1377x.to" 
 defUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"  
 
-# Get proxy from environment variable if set
+# ScraperAPI configuration (recommended for Cloudflare bypass)
+# Get your API key from https://www.scraperapi.com/
+SCRAPERAPI_KEY = os.getenv('SCRAPERAPI_KEY')
+SCRAPERAPI_GEO = os.getenv('SCRAPERAPI_GEO')  # Optional: country code (e.g., 'us', 'uk')
+SCRAPERAPI_RENDER = os.getenv('SCRAPERAPI_RENDER', 'false').lower() == 'true'  # Enable JS rendering
+
+# Request configuration
+REQUEST_TIMEOUT = int(os.getenv('REQUEST_TIMEOUT', '60'))
+MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
+
+# Get proxy from environment variable if set (used when ScraperAPI is not configured)
 # Format: http://user:pass@host:port or http://host:port
 PROXY = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or os.getenv('PROXY')
+
+# Transport mode logging
+if SCRAPERAPI_KEY:
+    print(f"ScraperAPI transport enabled (geo={SCRAPERAPI_GEO or 'auto'}, render={SCRAPERAPI_RENDER})")
+elif CLOUDSCRAPER_AVAILABLE:
+    print("Using cloudscraper transport (ScraperAPI not configured)")
+else:
+    print("Using basic requests transport (ScraperAPI not configured, cloudscraper not installed)")
 
 # Global session - will be initialized on first use
 _session = None
 _session_initialized = False
 
+def build_scraperapi_url(target_url):
+    """Build ScraperAPI URL with configured options"""
+    params = {
+        'api_key': SCRAPERAPI_KEY,
+        'url': target_url,
+    }
+    if SCRAPERAPI_GEO:
+        params['country_code'] = SCRAPERAPI_GEO
+    if SCRAPERAPI_RENDER:
+        params['render'] = 'true'
+    return f"http://api.scraperapi.com?{urllib.parse.urlencode(params)}"
+
 def get_session():
-    """Get or create a session using cloudscraper to bypass Cloudflare"""
+    """Get or create a session for making requests.
+    
+    Priority:
+    1. ScraperAPI (if SCRAPERAPI_KEY is set) - handles Cloudflare automatically
+    2. cloudscraper (if available) - attempts to bypass Cloudflare locally
+    3. Basic requests session (fallback)
+    """
     global _session, _session_initialized
     
     if _session is None:
-        # Use cloudscraper if available, otherwise fall back to requests
-        if CLOUDSCRAPER_AVAILABLE:
+        # For ScraperAPI, use a simple requests session (ScraperAPI handles everything)
+        if SCRAPERAPI_KEY:
+            _session = requests.Session()
+            _session.headers.update(get_headers(defUserAgent))
+        # Use cloudscraper if available and no ScraperAPI
+        elif CLOUDSCRAPER_AVAILABLE:
             _session = cloudscraper.create_scraper(
                 browser={
                     'browser': 'chrome',
@@ -38,35 +80,39 @@ def get_session():
             )
             # Don't override cloudscraper's headers - it handles them automatically
         else:
-            import requests
             _session = requests.Session()
             # Set default headers for requests fallback
             _session.headers.update(get_headers(defUserAgent))
         
-        # Configure proxy if available
-        if PROXY:
+        # Configure proxy if available (not needed for ScraperAPI - it proxies for you)
+        if PROXY and not SCRAPERAPI_KEY:
             _session.proxies = {
                 'http': PROXY,
                 'https': PROXY
             }
     
-    # Initialize session by visiting homepage to get cookies
+    # Initialize session by visiting homepage to get cookies (skip for ScraperAPI)
     if not _session_initialized:
-        try:
-            print("Initializing session by visiting homepage...")
-            # Don't pass custom headers to cloudscraper - let it handle them
-            if CLOUDSCRAPER_AVAILABLE:
-                r = _session.get(baseURL, timeout=60)
-            else:
-                r = _session.get(baseURL, headers=get_headers(defUserAgent), timeout=60)
-            r.raise_for_status()
+        if SCRAPERAPI_KEY:
+            # ScraperAPI handles sessions/cookies, just mark as initialized
             _session_initialized = True
-            print("Session initialized successfully")
-            # Small delay after initialization
-            time.sleep(random.uniform(0.5, 1.0))
-        except Exception as e:
-            print(f"Warning: Failed to initialize session: {e}")
-            # Continue anyway - might still work
+            print("ScraperAPI session ready")
+        else:
+            try:
+                print("Initializing session by visiting homepage...")
+                # Don't pass custom headers to cloudscraper - let it handle them
+                if CLOUDSCRAPER_AVAILABLE:
+                    r = _session.get(baseURL, timeout=REQUEST_TIMEOUT)
+                else:
+                    r = _session.get(baseURL, headers=get_headers(defUserAgent), timeout=REQUEST_TIMEOUT)
+                r.raise_for_status()
+                _session_initialized = True
+                print("Session initialized successfully")
+                # Small delay after initialization
+                time.sleep(random.uniform(0.5, 1.0))
+            except Exception as e:
+                print(f"Warning: Failed to initialize session: {e}")
+                # Continue anyway - might still work
     
     return _session
 
@@ -107,29 +153,56 @@ def fetch(query,pgno,userAgent=defUserAgent):
 
     return data_list
 
-def getSoup(url,userAgent,referer=None,retries=3):
-    """Fetch page with anti-detection measures and retry logic"""
+def getSoup(url, userAgent, referer=None, retries=None):
+    """Fetch page with anti-detection measures and retry logic.
+    
+    Uses ScraperAPI if configured, otherwise falls back to cloudscraper or requests.
+    """
+    if retries is None:
+        retries = MAX_RETRIES
+    
     session = get_session()
     
-    # Add random delay to mimic human behavior
-    time.sleep(random.uniform(1, 3))
+    # Add random delay to mimic human behavior (shorter for ScraperAPI since it handles rate limiting)
+    if SCRAPERAPI_KEY:
+        time.sleep(random.uniform(0.3, 0.8))
+    else:
+        time.sleep(random.uniform(1, 3))
     
     for attempt in range(retries):
         try:
-            # For cloudscraper, don't override headers - let it handle Cloudflare automatically
-            # Only set referer if provided
-            if CLOUDSCRAPER_AVAILABLE:
-                if referer:
-                    r = session.get(url, headers={'Referer': referer}, timeout=60)
-                else:
-                    r = session.get(url, timeout=60)
-            else:
-                # For requests fallback, use full headers
+            # ScraperAPI transport - route through their proxy with Cloudflare bypass
+            if SCRAPERAPI_KEY:
+                api_url = build_scraperapi_url(url)
                 headers = get_headers(userAgent, referer)
-                r = session.get(url, headers=headers, timeout=60)
+                r = session.get(api_url, headers=headers, timeout=REQUEST_TIMEOUT)
+            # cloudscraper transport
+            elif CLOUDSCRAPER_AVAILABLE:
+                if referer:
+                    r = session.get(url, headers={'Referer': referer}, timeout=REQUEST_TIMEOUT)
+                else:
+                    r = session.get(url, timeout=REQUEST_TIMEOUT)
+            # Basic requests fallback
+            else:
+                headers = get_headers(userAgent, referer)
+                r = session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            
             r.raise_for_status()
             soup = BeautifulSoup(r.text, 'html.parser')
             return soup
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if e.response is not None else None
+            # Retry on transient errors (403, 429, 5xx)
+            if status_code in (403, 429) or (status_code and status_code >= 500):
+                if attempt < retries - 1:
+                    wait_time = (2 ** attempt) + random.uniform(0, 1)
+                    print(f"HTTP {status_code} fetching {url} (attempt {attempt + 1}/{retries}). Retrying in {wait_time:.2f}s...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"HTTP {status_code} fetching {url} after {retries} attempts")
+                    raise
+            else:
+                raise
         except Exception as e:
             if attempt < retries - 1:
                 # Exponential backoff with jitter
