@@ -1,4 +1,5 @@
-# 1337x-API
+# MagnetAPI
+A fork of [1337x-API](https://github.com/dhimanparas20/1337x-API)
 
 ## Introduction
 
